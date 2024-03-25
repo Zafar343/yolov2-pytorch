@@ -1,5 +1,6 @@
 .vscode/
 data*
+*.onnx
 config/config.py
 Object_Detection_Metrics
 results/
