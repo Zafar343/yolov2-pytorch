@@ -2,8 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
-import os
+import contextlib
+import os, traceback
 import numpy as np
 import argparse
 import time
@@ -37,6 +37,13 @@ colorama.init(autoreset=True)
 torch.manual_seed(0)
 np.random.seed(0)
 # os.environ["CUDA_VISIBLE_DEVICES"] = '0'
+
+@contextlib.contextmanager
+def num_torch_thread(n_thread: int):
+    n_thread_original = torch.get_num_threads()
+    torch.set_num_threads(n_thread)
+    yield
+    torch.set_num_threads(n_thread_original)
 
 def parse_args():
     """
@@ -89,10 +96,10 @@ def parse_args():
                         default=False, type=bool,
                         help='Set true to remove small objects')
     parser.add_argument('--pix_th', dest='pix_th', 
-                        default=11, type=int,
+                        default=12, type=int,
                         help='Pixel Threshold value') 
     parser.add_argument('--asp_th', dest='asp_th', 
-                        default=1.4, type=float,
+                        default=1.5, type=float,
                         help='Aspect Ratio threshold')
     args = parser.parse_args()
     return args
@@ -165,12 +172,14 @@ def nan_hook(self, inp, output):
                                        "where:", 
                                        out[nan_mask.nonzero()[:, 0].unique(sorted=True)] if nan_mask.nonzero().size()[1]>0 else out)
 
-def train():
+def train(args, device=None):
     
-    # define the hyper parameters first
-    args = parse_args()
-    os.environ["CUDA_VISIBLE_DEVICES"] = f'{args.device}'
-    args.lr = cfg.lr
+    if device is not None:
+        os.environ["CUDA_VISIBLE_DEVICES"] = f'{device}'
+    else:
+        os.environ["CUDA_VISIBLE_DEVICES"] = f'{args.device}'   
+    if not args.lr:
+        args.lr = cfg.lr
     # args.decay_lrs = cfg.decay_lrs
     args.weight_decay = cfg.weight_decay
     args.momentum = cfg.momentum
@@ -224,38 +233,56 @@ def train():
     print(f'{Style.BRIGHT}initialize the model....')
     tic = time.time()
     try:
-        nc
+        nc, args.fedml
     except:
         nc = None
+        args.fedml = False
 
-    if nc is not None:
-        model = Yolov2(classes=names)
-    else:
-        model = Yolov2()    
-    
-    # for submodule in model.modules():
-    #     submodule.register_forward_hook(nan_hook)
-
-    if args.resume:     # False
-        print(f'Loading the pre-trained checkpoint from {Fore.GREEN}{Style.BRIGHT}{args.weights}....')
-        # pre_trained_checkpoint = torch.load(args.pretrained_model,map_location='cpu') #---CHANGE
-        pre_trained_checkpoint = torch.load(args.weights,map_location='cpu') #---CHANGE
-        # model.load_state_dict(pre_trained_checkpoint['model'])
-        _model = pre_trained_checkpoint['model']
-        if _model['conv9.0.weight'].shape[0] != (5+_nc)*5:
-            print(f'{Style.BRIGHT}Last layer of pretrain checkpoint is different')
-            print(f'{Style.BRIGHT}Changing the last layer of {Fore.MAGENTA}{Style.BRIGHT}{args.weights}...')
-            pre_trained_checkpoint = util(_model)    # con9: torch.Size([40, 1024, 1, 1]), bias9: torch.Size([40])
-        # check_point={k:v if v.size()==model[k].size()  else  model[k] for k,v in zip(enumerate(model.items()), enumerate(pre_trained_checkpoint["model"].items()))}
+    if not args.fedml:
+        if nc is not None:
+            model = Yolov2(classes=names)
+        else:
+            model = Yolov2()    
         
-        model.load_state_dict(pre_trained_checkpoint['model'])    
+        # for submodule in model.modules():
+        #     submodule.register_forward_hook(nan_hook)
+
+        if args.resume:     # False
+            print(f'Loading the pre-trained checkpoint from {Fore.GREEN}{Style.BRIGHT}{args.weights}....')
+            # pre_trained_checkpoint = torch.load(args.pretrained_model,map_location='cpu') #---CHANGE
+            pre_trained_checkpoint = torch.load(args.weights,map_location='cpu') #---CHANGE
+            # model.load_state_dict(pre_trained_checkpoint['model'])
+            _model = pre_trained_checkpoint['model']
+            if _model['conv9.0.weight'].shape[0] != (5+_nc)*5:
+                print(f'{Style.BRIGHT}Last layer of pretrain checkpoint is different')
+                print(f'{Style.BRIGHT}Changing the last layer of {Fore.MAGENTA}{Style.BRIGHT}{args.weights}...')
+                pre_trained_checkpoint = util(_model)    # con9: torch.Size([40, 1024, 1, 1]), bias9: torch.Size([40])
+            # check_point={k:v if v.size()==model[k].size()  else  model[k] for k,v in zip(enumerate(model.items()), enumerate(pre_trained_checkpoint["model"].items()))}
+            
+            try: model.load_state_dict(pre_trained_checkpoint['model'])
+            except Exception as e:
+                traceback.print_exc()
+                print(f"Error: {e}")    
+    
+    try:args.model
+    except:args.model=None
+    if args.model is not None:
+        model = args.model
     
     toc = time.time()
     print('model loaded: cost time {:.2f}s'.format(toc-tic))
+    
+    try:
+        args.fedml
+    except:
+        args.fedml = False
 
     # initialize the optimizer
     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
-    scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[6,20,60,120,150], gamma=0.1)
+    if not args.fedml:
+        scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=[20,60,120,150], gamma=0.1)
+    try:scheduler
+    except:scheduler=False
     if args.use_cuda:
         model.cuda()
 
@@ -264,6 +291,7 @@ def train():
 
     # set the model mode to train because we have some layer whose behaviors are different when in training and testing.
     # such as Batch Normalization Layer.
+    best_model = model
     model.train()
 
     iters_per_epoch = int(len(train_dataset) / args.batch_size)
@@ -300,8 +328,8 @@ def train():
             # Get the next batch of training data
             # print('Loading first batch of images')
             im_data, boxes, gt_classes, num_obj, im_info = next(train_data_iter)     #boxes=[b, 4,4] ([x1,x2,y1,y2]) padded with zeros
-            for i in range(im_data.shape[0]):
-                showImg(im_data[i], boxes[i])
+            # for i in range(im_data.shape[0]):
+            #     showImg(im_data[i], boxes[i])
 
             # Move the data tensors to the GPU
             if args.use_cuda:
@@ -332,7 +360,8 @@ def train():
             optimizer.step()
 
             loss_temp += loss.item()
-        scheduler.step()
+        if scheduler:
+            scheduler.step()
         # Show loss after epoch
         toc = time.time()
         loss_temp /= iters_per_epoch
@@ -370,11 +399,14 @@ def train():
         
         # Check and save the best mAP
         save_name_temp = os.path.join(_output_dir, 'temp')
+        
         if args.dataset == 'custom':
-            map, _ = test_for_train(_output_dir, model, args, val_path, names)
+            with num_torch_thread(1):
+                map, _ = test_for_train(_output_dir, model, args, val_path, names)
         else:
             map, _ = test_for_train(_output_dir, model, args)
         if map > max_map:
+            best_model = model
             max_map = map
             best_map_score = round((map*100),2)
             best_map_epoch = epoch
@@ -388,15 +420,20 @@ def train():
                 'loss': loss.item(),
                 'map': map
                 }, save_name_best)
-
-    print(f'\n\t---------------------{Style.BRIGHT}Best mAP was at Epoch {best_map_epoch}, with mAP={best_map_score}% and loss={best_map_loss}\n')
-    print(f'{Style.BRIGHT}Validating after Training...')
-    print(f'Loading best weights from {Style.BRIGHT}{Fore.GREEN}{save_name_best}')
-    checkpoint = torch.load(save_name_best,map_location='cpu')
-    model.load_state_dict(checkpoint['model'])
-    map, _ = test_for_train(_output_dir, model, args, val_path, names, True)
+                
+    if not args.fedml:
+        print(f'\n\t---------------------{Style.BRIGHT}Best mAP was at Epoch {best_map_epoch}, with mAP={best_map_score}% and loss={best_map_loss}\n')
+        print(f'{Style.BRIGHT}Validating after Training...')
+        print(f'Loading best weights from {Style.BRIGHT}{Fore.GREEN}{save_name_best}')
+        checkpoint = torch.load(save_name_best,map_location='cpu')
+        model.load_state_dict(checkpoint['model'])
+        map, _ = test_for_train(_output_dir, model, args, val_path, names, True)
+    else:
+        return best_model, max_map    
 
 
 
 if __name__ == '__main__':
-    train()
+    # define the hyper parameters first
+    args = parse_args()
+    train(args)

@@ -1,8 +1,9 @@
 from multiprocessing import Process
 from tqdm import tqdm
 import os
+import contextlib
 import argparse
-import time
+# import time
 import numpy as np
 import pickle
 import torch
@@ -11,11 +12,11 @@ from pathlib import Path
 from PIL import Image
 from yolov2_tiny import Yolov2
 from dataset.factory import get_imdb
-from dataset.roidb import RoiDataset, Custom_yolo_dataset
+from dataset.roidb import RoiDataset, Custom_yolo_dataset, inference_collate
 from yolo_eval import yolo_eval
 from util.visualize import draw_detection_boxes
-import matplotlib.pyplot as plt
-from util.network import WeightLoader
+# import matplotlib.pyplot as plt
+# from util.network import WeightLoader
 from torch.utils.data import DataLoader
 from config import config as cfg
 import pascalvoc
@@ -31,6 +32,13 @@ warnings.filterwarnings('ignore')
 
 torch.manual_seed(0)
 np.random.seed(0)
+
+@contextlib.contextmanager
+def num_torch_thread(n_thread: int):
+    n_thread_original = torch.get_num_threads()
+    torch.set_num_threads(n_thread)
+    yield
+    torch.set_num_threads(n_thread_original)
 
 def parse_args():
 
@@ -98,7 +106,7 @@ def prepare_im_data(img):
 
     return im_data, im_info
 
-def appendLists(a=[],b=[], im_info={}, thres=0.25):
+def appendLists(a=[],b=[], im_info={}, thres=0.25, selfT=False):
     w = im_info['width'].item()
     h = im_info['height'].item()
     for i in range(len(b)):
@@ -109,13 +117,12 @@ def appendLists(a=[],b=[], im_info={}, thres=0.25):
             height = b[i][4] - b[i][2]
             x_center = (b[i][3] + b[i][1]) / 2
             y_center = (b[i][4] + b[i][2]) / 2
-            # _smal_list = f'{int(b[i][0])} {round(b[i][-1],4)} {round(b[i][1],4)} {round(b[i][2],4)} {round(b[i][3],4)} {round(b[i][4],4)} \n'
-            # _smal_list = f'{int(b[i][0])} {round(b[i][1]/w,4)} {round(b[i][2]/h,4)} {round(b[i][3]/w,4)} {round(b[i][4]/h,4)} \n'
-            # _smal_list = f'{int(b[i][0])} {round(b[i][-1],4)} {round(b[i][1],4)} {round(b[i][2],4)} {round(b[i][3],4)} {round(b[i][4],4)} \n'
-            _smal_list = f'{int(b[i][0])} {round(b[i][-1],4)} {round(x_center/w, 4)} {round(y_center/h, 4)} {round(width/w, 4)} {round(height/h, 4)} \n'
+            
+            if not selfT:
+                _smal_list = f'{int(b[i][0])} {round(b[i][-1],4)} {round(x_center/w, 4)} {round(y_center/h, 4)} {round(width/w, 4)} {round(height/h, 4)} \n'
+            else:
+                _smal_list = f'{int(b[i][0])} {round(x_center/w, 4)} {round(y_center/h, 4)} {round(width/w, 4)} {round(height/h, 4)} {round(b[i][-1],4)} \n'
             a.append(_smal_list)    
-    # if len(a)==0:
-    #     a.append('0 0 0 0 0 \n')
     return a
 
 def util(check_point):
@@ -331,7 +338,7 @@ def test(args):
                                 # cls_det[:, 1] = detections[inds, 4] * detections[inds, 5]
                                 # showImg(im_data[i], cls_det, im_info, False)
                                 _det1Class = cls_det.tolist()         # per class detections tensor of (N,6) [cls conf x y w h]
-                                _detAllclass = appendLists(_detAllclass, _det1Class, im_info, args.thres)
+                                _detAllclass = appendLists(_detAllclass, _det1Class, im_info, args.thres, args.self_training)
                         if not os.path.exists(f'{save_dir}/labels'):
                             os.mkdir(f'{save_dir}/labels')
                         with open(f'{save_dir}/labels/{name}', 'w') as f:
@@ -363,11 +370,13 @@ def test(args):
         return map, class_metrics   
     else:
         print(f'{Fore.GREEN} Detections saved in the designated folder for pseudo-label generation')
+        return None, None
 
 def test_for_train(temp_path, model, 
                    args, val_data=None, 
                    classes=None, 
-                   afterTrain=False):
+                   afterTrain=False,
+                   device=None):
     # args = parse_args()
     # make a directory to save predictions paths
     save_dir = f'{temp_path}/preds'
@@ -421,11 +430,19 @@ def test_for_train(temp_path, model,
     args.output_dir = temp_path
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     
-    model = model    
-    val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, pin_memory=True)
+    model = model
+    
+    with num_torch_thread(1):    
+        val_dataloader = DataLoader(val_dataset,
+                                batch_size=args.batch_size,
+                                shuffle=False,
+                                collate_fn=inference_collate)
 
     if args.use_cuda:
-        model.cuda()
+        if device is None:
+            model.cuda()
+        else:
+            model.to(device)    
         print(f"Validating using CUDA")
 
     model.eval()
@@ -440,7 +457,10 @@ def test_for_train(temp_path, model,
         # for batch, (im_data, im_infos) in enumerate(val_dataloader):
         # for batch, (im_data, im_infos) in enumerate(small_val_dataloader):
             if args.use_cuda:
-                im_data_variable = Variable(im_data).cuda()
+                if device is None:
+                    im_data_variable = Variable(im_data).cuda()
+                else:
+                    im_data_variable = Variable(im_data).to(device)    
             else:
                 im_data_variable = Variable(im_data)
 
@@ -453,7 +473,7 @@ def test_for_train(temp_path, model,
                 output = [item[i].data for item in yolo_outputs]
                 im_info = {'width': im_infos[i][0], 'height': im_infos[i][1]}
                 detections = yolo_eval(output, im_info, conf_threshold=args.conf_thresh,
-                                       nms_threshold=args.nms_thresh)
+                                        nms_threshold=args.nms_thresh)
                 # print('im detect [{}/{}]'.format(img_id+1, len(val_dataset)))
                 if len(detections) > 0:
                     if args.data == None:

@@ -8,6 +8,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import torch
 from config import config as cfg
 from util.bbox import generate_all_anchors, xywh2xxyy, box_transform_inv, xxyy2xywh
@@ -15,6 +16,12 @@ from util.bbox import box_ious
 import time
 from config import config as cfg
 
+@contextlib.contextmanager
+def num_torch_thread(n_thread: int):
+    n_thread_original = torch.get_num_threads()
+    torch.set_num_threads(n_thread)
+    yield
+    torch.set_num_threads(n_thread_original)
 
 def yolo_filter_boxes(boxes_pred, conf_pred, classes_pred, confidence_threshold=0.6):
     """
@@ -36,6 +43,7 @@ def yolo_filter_boxes(boxes_pred, conf_pred, classes_pred, confidence_threshold=
     # multiply class scores and objectiveness score
     # use class confidence score
     # TODO: use objectiveness (IOU) score or class confidence score
+    # with num_torch_thread(1):
     cls_max_conf, cls_max_id = torch.max(classes_pred, dim=-1, keepdim=True)
     cls_conf = conf_pred * cls_max_conf
 
@@ -48,6 +56,9 @@ def yolo_filter_boxes(boxes_pred, conf_pred, classes_pred, confidence_threshold=
     filtered_cls_max_conf = cls_max_conf[pos_inds, :]
 
     filtered_cls_max_id = cls_max_id[pos_inds, :]
+    
+    # with num_torch_thread(1):
+    #     filtered_cls_max_id = filtered_cls_max_id.float()
 
     return filtered_boxes, filtered_conf, filtered_cls_max_conf, filtered_cls_max_id.float()
 
@@ -245,8 +256,7 @@ def yolo_eval(yolo_output, im_info, conf_threshold=0.6, nms_threshold=0.4, scale
         seq = [boxes_pred_class_keep, conf_pred_class_keep, cls_max_conf_class_keep, classes_class_keep.float()]
 
         detections_cls = torch.cat(seq, dim=-1)
-        detections.append(detections_cls)
-
+        detections.append(detections_cls)       
     return torch.cat(detections, dim=0)
 
 
