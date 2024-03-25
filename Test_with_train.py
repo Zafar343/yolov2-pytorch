@@ -10,7 +10,7 @@ import torch
 from torch.autograd import Variable
 from pathlib import Path
 from PIL import Image
-from yolov2_tiny import Yolov2
+from yolov2_tiny_2 import Yolov2
 from dataset.factory import get_imdb
 from dataset.roidb import RoiDataset, Custom_yolo_dataset, inference_collate
 from yolo_eval import yolo_eval
@@ -56,7 +56,7 @@ def parse_args():
                         help='number of workers to load training data',
                         default=1, type=int)
     parser.add_argument('--bs', dest='batch_size',
-                        default=8, type=int)
+                        default=64, type=int)
     parser.add_argument('--cuda', dest='use_cuda',
                         default=True, type=bool)
     parser.add_argument('--vis', dest='vis',
@@ -67,7 +67,7 @@ def parse_args():
     #                     default='yolov2-pytorch/data/pretrained/yolov2-tiny-voc.pth',
     #                     help='model .pth path')
     parser.add_argument('--thres', type=float,
-                       default=0.1, help='confidence threshold for selecting final predicitions')
+                       default=0.2, help='confidence threshold for selecting final predicitions')
     parser.add_argument('--pseudos', type=bool,
                         default=False, help='True if generating pseudo-labels')
     parser.add_argument('--device', default=0,
@@ -187,7 +187,7 @@ def showImg(img, labels, meta, relative=False):
     cv2.destroyAllWindows()
 
 def test(args):
-    args.conf_thresh = 0.01
+    args.conf_thresh = 0.001
     args.nms_thresh = 0.45
     if args.vis:
         args.conf_thresh = 0.5
@@ -202,7 +202,7 @@ def test(args):
         names = data_dict['names']  # class names
         assert len(names) == nc, f'{len(names)} names found for nc={nc} dataset in {args.data}'  # check
     
-    save_dir = f'{args.output_dir}/preds'
+    save_dir = f'{args.output_dir}/eval/preds'
     if not os.path.exists(save_dir):
         print(f'making: {Fore.GREEN}{save_dir}')
         os.makedirs(save_dir)
@@ -221,13 +221,13 @@ def test(args):
         # if args.withTrain:
         #     args.conf_thresh = 0.18
         #     args.nms_thresh = 0.35
-        args.scale   = True
+        args.scale = True
         val_dataset  = Custom_yolo_dataset(data=val_data, train=False, cleaning = False)
         dataset_size = len(val_dataset)
         num_classes  = nc
         # all_boxes = [[[] for _ in range(dataset_size)] for _ in range(num_classes)]
     else:
-        args.scale   = True
+        args.scale = True
         args.dataset = "voc07test"
         num_classes  = 20
         # args.conf_thresh = 0.001
@@ -281,7 +281,7 @@ def test(args):
         checkpoint = util(_model)
     model.load_state_dict(checkpoint['model'])
     print(f'Model loaded from {args.model_name}')
-
+    
     if args.use_cuda:
         model.to(device)
         print(f"Validating using CUDA")
@@ -347,7 +347,7 @@ def test(args):
         if args.data is not None:
             args.gtFolder           =     val_dir
             args.detFolder          =     f'{save_dir}/labels'
-            args.iouThreshold       =     0.5
+            args.iouThreshold       =     args.nms_thresh
             args.gtFormat           =     'xywh'
             args.detFormat          =     'xywh'
             args.gtCoordinates      =     'rel'
