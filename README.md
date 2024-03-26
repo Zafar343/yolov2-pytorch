@@ -110,7 +110,7 @@ the data root path
     # cd VOCdevkit2012
     # ln -s $VOCdevit/VOC2012 VOC2012
     ```
-### Training
+### For Training on PASCAL VOC
 
 	python train_yolov2_tiny.py
 
