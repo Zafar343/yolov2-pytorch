@@ -17,6 +17,8 @@ This repository aims to learn and understand the YOLO algorithm. I am a beginner
 - [x] pretrained network
 - [x] reorg layer
 - [x] multi-scale training
+- [x] self-training with yolov2-tiny
+- [x] Federated learning with yolov2-tiny
 - [ ] reproduce original paper's mAP
 
 ## Main Results
@@ -40,7 +42,7 @@ Running time: ~19ms (52FPS) on GTX 1080
 
 First clone the code
 
-    git clone https://github.com/tztztztztz/yolov2.pytorch.git
+    git clone https://github.com/Zafar343/yolov2-pytorch.git
     
 Install dependencies
 
@@ -50,6 +52,7 @@ Then create some folder
 
     mkdir output 
     mkdir data
+    mkdir results
 
 Download the pretrained weights
 
@@ -107,7 +110,33 @@ the data root path
     # cd VOCdevkit2012
     # ln -s $VOCdevit/VOC2012 VOC2012
     ```
-    
+
+### Training on custom data
+
+# Note: It is not necessary to put custom data in the data folder you can put itany where:
+	
+ 	make train.txt (list of training image paths)
+  
+ 	make val.txt (list of validation image paths)
+  
+  	update train.txt path, val.txt path and val_dir in data.yaml
+   				or
+        make a similar data.yaml file as in the repository
+	
+ # For training on custom data Use: 
+ 
+ 	python train_yolov2_tiny.py --dataset custom --data data.yaml
+ 
+### Pseudo Label generation with Test_with_train.py
+ 	python Test_with_train.py --pseudos True –self-training True
+  
+### Federated Learning
+  	python fedML.py --dataset custom --data data.yaml --max_rounds x –epochsPerRound y
+       
+### Inference & Visualization
+
+	Refer to demo.py
+ 
 ### Download pretrained network
 
     cd yolov2.pytorch
@@ -115,44 +144,6 @@ the data root path
     mkdir pretrained
     cd pretrained
     wget https://pjreddie.com/media/files/darknet19_448.weights
-    
-
-
-### Train the model - YOLOv2 - Tiny 
-
-    python train_yolov2_tiny.py
-
-### Train the model - YOLOv2
-
-    python train.py --cuda true
-     
- If you want use multiple GPUs to accelerate the training. you can use the command below.
- 
-    python train.py --cuda true --mGPUs true
-
-**NOTE**: Multi-scale training uses more GPU memory. If you have only one GPU with 8G memory, it's better to set `multi-scale=False` in `config/config.py`. See [link](https://github.com/tztztztztz/yolov2.pytorch/blob/master/config/config.py#L31).
-    
-    
-## Testing 
- 
-    python test.py --cuda true
-
-## Usage of updated code
-- Start by cloning the code, Copy paste below command.
-	git clone https://github.com/Zafar343/yolov2-pytorch.git
-- Make data file  edit available data.yaml file and change the datapaths according to your data.
-- Make necessary folders if required.
-- Run training with custom data with following command:
-	python train_yolov2_tiny.py --dataset custom --data “add/path/to/data.yaml” --output_dir “add/path/to/out_dir” --max_epochs 300 --device 0 --batch_size 4
-- If starting from a pre-trained check point also use:
-	--resume True --weights “add/path/to/weights.pth”
-- For validation and inference to generate pseudo-labels run folloeing command
-	python Test_with_train.py --dataset custom --data “add/path/to/data.yaml” --output_dir “add/path/to/out_dir” --model_name “add/path/to/trained/model.pth”--device 0 --bs 4
-- If generating pseudo-labels also use:
-  	--pseudos True –self-training True
-- For federated learning (Distributed training) run following command
-	python fedML.py --dataset custom --data “add/path/to/data.yaml” --weights “path/to/pretrained/model.pth” --max_rounds 30 –epochsPerRound 15 --batch_size 4
-- For demo.py (inference and visualization script) refer to the script
 
 
 
