@@ -113,17 +113,17 @@ the data root path
 
 ### Training on custom data
 
-# Note: It is not necessary to put custom data in the data folder you can put itany where:
+### Note: It is not necessary to put custom data in the data folder you can put itany where:
 	
- 	make train.txt (list of training image paths)
+1. make train.txt (list of training image paths)
   
- 	make val.txt (list of validation image paths)
-  
-  	update train.txt path, val.txt path and val_dir in data.yaml
+2. make val.txt (list of validation image paths)
+
+3. update train.txt path, val.txt path and val_dir in data.yaml
    				or
-        make a similar data.yaml file as in the repository
+4. make a similar data.yaml file as in the repository
 	
- # For training on custom data Use: 
+### For training on custom data Use: 
  
  	python train_yolov2_tiny.py --dataset custom --data data.yaml
  
