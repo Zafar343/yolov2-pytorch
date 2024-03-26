@@ -110,8 +110,11 @@ the data root path
     # cd VOCdevkit2012
     # ln -s $VOCdevit/VOC2012 VOC2012
     ```
+### Training
 
-### Training on custom data
+	python train_yolov2_tiny.py
+
+## Training on custom data
 
 ### Note: It is not necessary to put custom data in the data folder you can put itany where:
 	
