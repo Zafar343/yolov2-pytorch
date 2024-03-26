@@ -137,6 +137,24 @@ the data root path
  
     python test.py --cuda true
 
+## Usage of updated code
+•	Start by cloning the code, Copy paste below command.
+git clone https://github.com/Zafar343/yolov2-pytorch.git
+•	Install requirements.
+pip install requirements.txt
+•	Make data file  edit available data.yaml file and change the datapaths according to your data.
+•	Make necessary folders if required.
+•	Run training with custom data with following command:
+python train_yolov2_tiny.py --dataset custom --data “add/path/to/data.yaml” --output_dir “add/path/to/out_dir” --max_epochs 300 --device 0 --batch_size 4
+If starting from a pre-trained check point also use: --resume True --weights “add/path/to/weights.pth”
+•	For validation and inference to generate pseudo-labels run folloeing command
+python Test_with_train.py --dataset custom --data “add/path/to/data.yaml” --output_dir “add/path/to/out_dir” --model_name “add/path/to/trained/model.pth”--device 0 --bs 4
+If generating pseudo-labels also use: --pseudos True –self-training True
+•	For federated learning (Distributed training) run following command
+python fedML.py --dataset custom --data “add/path/to/data.yaml” --weights “path/to/pretrained/model.pth” --max_rounds 30 –epochsPerRound 15 --batch_size 4
+•	For demo.py (inference and visualization script) refer to the script
+![image](https://github.com/Zafar343/yolov2-pytorch/assets/93573333/229f8541-2b12-46a6-947c-5fc36105ff3b)
+
  
  
 
