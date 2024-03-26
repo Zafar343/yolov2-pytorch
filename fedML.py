@@ -146,14 +146,14 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Yolo v2')
     parser.add_argument('--max_rounds', dest='max_rounds',
                         help='number of Federated rounds',
-                        default=25, type=int)
+                        default=3, type=int)
     parser.add_argument('--epochPerRound', type=int,
-                        default=20,
+                        default=2,
                         help='number of epochs per Federated round')
     parser.add_argument('--start_epoch', dest='start_epoch',
                         default=1, type=int)
     parser.add_argument('--batch_size', dest='batch_size',
-                        default=64, type=int)
+                        default=4, type=int)
     parser.add_argument('--data_limit', dest='data_limit',
                         default=0, type=int)
     parser.add_argument('--dataset', dest='dataset',
