@@ -116,7 +116,7 @@ the data root path
 
 ## Training on custom data
 
-### Note: It is not necessary to put custom data in the data folder you can put itany where:
+### Note: It is not necessary to put custom data in the data folder, you can put it any where:
 	
 1.	make train.txt (list of training image paths)
   
@@ -129,7 +129,7 @@ the data root path
  	python train_yolov2_tiny.py --dataset custom --data data.yaml
  
 ### Pseudo Label generation with Test_with_train.py
- 	python Test_with_train.py --pseudos True –self-training True
+ 	python Test_with_train.py --pseudos True --self-training True
   
 ### Federated Learning
   	python fedML.py --dataset custom --data data.yaml --max_rounds x –epochsPerRound y
