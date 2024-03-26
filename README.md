@@ -115,13 +115,11 @@ the data root path
 
 ### Note: It is not necessary to put custom data in the data folder you can put itany where:
 	
-1. make train.txt (list of training image paths)
+1.	make train.txt (list of training image paths)
   
-2. make val.txt (list of validation image paths)
+2.	make val.txt (list of validation image paths)
 
-3. update train.txt path, val.txt path and val_dir in data.yaml
-   				or
-4. make a similar data.yaml file as in the repository
+3.	update train.txt path, val.txt path and val_dir in data.yaml OR make a similar data.yaml file as in the repository
 	
 ### For training on custom data Use: 
  
@@ -135,7 +133,7 @@ the data root path
        
 ### Inference & Visualization
 
-	Refer to demo.py
+	python demo.py
  
 ### Download pretrained network
 
