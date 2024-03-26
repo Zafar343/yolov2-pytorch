@@ -178,6 +178,8 @@ def train(args, device=None):
         os.environ["CUDA_VISIBLE_DEVICES"] = f'{device}'
     else:
         os.environ["CUDA_VISIBLE_DEVICES"] = f'{args.device}'   
+    try: args.lr
+    except: args.lr=None
     if not args.lr:
         args.lr = cfg.lr
     # args.decay_lrs = cfg.decay_lrs
