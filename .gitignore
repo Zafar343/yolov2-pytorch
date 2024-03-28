@@ -31,7 +31,7 @@ VOCdevkit2007/
 VOCdevkit2012/
 # C extensions
 *.so
-data/pretrained/
+# data/pretrained/
 
 # Distribution / packaging
 .Python
