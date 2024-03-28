@@ -1,4 +1,5 @@
 import os
+import shutil
 import argparse
 import time
 import torch
@@ -8,8 +9,8 @@ from test import prepare_im_data
 # from yolov2 import Yolov2
 from yolov2_tiny_2 import Yolov2
 from yolo_eval import yolo_eval
-from util.visualize import draw_detection_boxes
-import matplotlib.pyplot as plt
+# from util.visualize import draw_detection_boxes
+# import matplotlib.pyplot as plt
 from util.network import WeightLoader
 import cv2
 import numpy as np
@@ -19,79 +20,26 @@ def parse_args():
 
     parser = argparse.ArgumentParser('Yolo v2')
     parser.add_argument('--output_dir', dest='output_dir',
-                        default='output', type=str)
+                        default='output', type=str)         # specify the path of output label folder here in default
     parser.add_argument('--model_name', dest='model_name',
-                        default='yolov2_epoch_160', type=str)
+                        default='data/pretrained/yolov2-tiny-voc.pth', type=str) # specift the path of weights here in default
     parser.add_argument('--cuda', dest='use_cuda',
                         default=False, type=bool)
     parser.add_argument('--data', type=str,
                         default=None,
-                        help='Path to txt file containing images list')
+                        help='Path to data.txt file containing images list') # specify the data file (name should be data.txt) which should be a text file containing list of paths of all the inference images
 
+    parser.add_argument('--classes', type=str,
+                        default=None,
+                        help='provide the list of class names if other than voc') # Example 'default = ('Vehicle', 'Rider', 'Pedestrian')'
+    parser.add_argument('--conf_thres', type=float,
+                        default=0.001,
+                        help='choose a confidence threshold for inference, must be in range 0-1')
+    parser.add_argument('--nms_thres', type=float,
+                        default=0.45,
+                        help='choose an nms threshold for post processing predictions, must be in range 0-1s')
     args = parser.parse_args()
     return args
-
-def drawBox(label:np.array, img:np.ndarray, classes, rel=False):
-    # for i in range(label.shape[0]):
-    h, w, _ = img.shape
-    if label.size == 6:
-        box = [label[0], label[1], label[2], label[3]]
-        cls =  classes[int(label[-1])]
-        conf = round(label[-2], 2)
-    elif label.size == 5:
-        box = [label[0], label[1], label[2], label[3]]
-        conf = label[-1]    
-    elif label.size == 4:    
-        box = [label[0], label[1], label[2], label[3]]
-    else:
-        raise ValueError("Invalid size array only accept arrays of size 4 or 5")    
-    
-    # color = list(np.random.random(size=3) * 256)
-    color = [(0,0,255), (0,255,0), (255,0,0)]
-    if not cls:
-        cls = ''
-    if not conf:
-        conf = ''    
-    text = f"{cls} {conf}:"
-    if rel:
-        img = cv2.rectangle(img,(int(box[0]*w), int(box[1]*h)), 
-                            (int(box[2]*w), int(box[3]*h)), 
-                            color[int(label[-1])], 2)
-        
-        cv2.putText(img, text, (int((box[0]*w)+2), int((box[1]*h) - 4)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color[int(label[-1])], 1)
-    else:
-        img = cv2.rectangle(img,(int(box[0]), int(box[1])), 
-                            (int(box[2]), int(box[3])), 
-                            color[int(label[-1])], 2)
-        
-        cv2.putText(img, text, (int((box[0])+2), int((box[1]) - 4)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, 
-                    color[int(label[-1])], 1)
-    return img
-
-def showImg(img, labels, meta=False, cls='', relative=False):
-    # Convert the tensor to a numpy array
-    _img = img
-    # image_np = _image.numpy().transpose((1, 2, 0))
-    # image_np = std * image_np + mean
-    # image_np = np.clip(image_np, 0, 1)*255
-    # _img = Image.fromarray(image_np.astype('uint8'), 'RGB')
-    _img = np.array(_img)
-    _img = cv2.cvtColor(_img, cv2.COLOR_RGB2BGR)
-    if meta:
-        _img = cv2.resize(_img, (int(meta['width'].item()),  int(meta['height'].item())), interpolation= cv2.INTER_LINEAR)
-    for i in range(labels.shape[0]):
-        label = labels[i]
-        conf = label[-2]
-        if conf >= 0.25:
-            if relative:
-                _img = drawBox(label, _img, True)
-            else:    
-                _img = drawBox(label, _img, cls)
-    cv2.imshow('', _img)
-    cv2.waitKey()
-    cv2.destroyAllWindows()
 
 def demo():
     args = parse_args()
@@ -100,32 +48,57 @@ def demo():
     if args.data==None:
 
         # input images
-        images_dir = 'images'
+        images_dir   = 'images'
         images_names = ['image1.jpg', 'image2.jpg']
     else:
         with open(args.data, 'r') as f:
             images_names = f.readlines()
     
-    # classes = ('aeroplane', 'bicycle', 'bird', 'boat',
-    #                         'bottle', 'bus', 'car', 'cat', 'chair',
-    #                         'cow', 'diningtable', 'dog', 'horse',
-    #                         'motorbike', 'person', 'pottedplant',
-    #                         'sheep', 'sofa', 'train', 'tvmonitor')
-    classes = ('Vehicle', 'Rider', 'Person')        
+    try: classes
+    except: classes=None
+    
+    if classes is None:
+        classes = ('aeroplane', 'bicycle', 'bird', 'boat',
+                                'bottle', 'bus', 'car', 'cat', 'chair',
+                                'cow', 'diningtable', 'dog', 'horse',
+                                'motorbike', 'person', 'pottedplant',
+                                'sheep', 'sofa', 'train', 'tvmonitor')
+    else:
+        classes = args.classes        
+    
+    # set the save folder path for predictions
+    if args.data==None:
+        pred_dir = os.path.join(images_dir, 'preds')    
+    else:
+        dir      = args.data.split('/data')[0]
+        pred_dir = os.path.join(dir, 'preds')                    
+    
+    if not os.path.exists(pred_dir):
+        print(f'making {pred_dir}')
+        os.mkdir(pred_dir)
+    else:
+        print('Deleting existing pred dir')
+        shutil.rmtree(pred_dir, ignore_errors=True)
+        print(f'making new {pred_dir}')
+        os.mkdir(pred_dir)
     
     model = Yolov2(classes=classes)
-    # weight_loader = WeightLoader()
-    # weight_loader.load(model, 'yolo-voc.weights')
-    # print('loaded')
+    
+    model_type = args.model_name.split('.')[-1]
+    
+    if model_type == 'weights':
+        weight_loader = WeightLoader()
+        weight_loader.load(model, 'yolo-voc.weights')
+        print('loaded')
 
-    # model_path = os.path.join(args.output_dir, args.model_name + '.pth')
-    model_path = args.model_name
-    print('loading model from {}'.format(model_path))
-    if torch.cuda.is_available():
-        checkpoint = torch.load(model_path, map_location=('cuda:0'))
     else:
-        checkpoint = torch.load(model_path, map_location='cpu')
-    model.load_state_dict(checkpoint['model'])
+        model_path = args.model_name
+        print('loading model from {}'.format(model_path))
+        if torch.cuda.is_available():
+            checkpoint = torch.load(model_path, map_location=('cuda:0'))
+        else:
+            checkpoint = torch.load(model_path, map_location='cpu')
+        model.load_state_dict(checkpoint['model'])
 
     if args.use_cuda:
         model.cuda()
@@ -136,10 +109,11 @@ def demo():
     for image_name in images_names:
         if args.data==None:
             image_path = os.path.join(images_dir, image_name)
-            img = Image.open(image_path)
+            img        = Image.open(image_path)
         else:
             image_path = image_name.split('\n')[0]
-            img = Image.open(image_path)   
+            img        = Image.open(image_path)   
+        
         im_data, im_info = prepare_im_data(img)
 
         if args.use_cuda:
@@ -151,7 +125,7 @@ def demo():
 
         yolo_output = model(im_data_variable)
         yolo_output = [item[0].data for item in yolo_output]
-        detections = yolo_eval(yolo_output, im_info, conf_threshold=0.05, nms_threshold=0.45)
+        detections  = yolo_eval(yolo_output, im_info, conf_threshold=args.conf_thres, nms_threshold=args.nms_thres)
 
         toc = time.time()
         cost_time = toc - tic
@@ -160,18 +134,29 @@ def demo():
 
         
         if len(detections)>0:
-            det_boxes = detections[:, :5].cpu().numpy()
+            name        = image_name.split('/')[-1]
+            pred_name   = name.split('.')[0] + '.txt'
+            pred_path   = os.path.join(pred_dir, pred_name)
+            det_boxes   = detections[:, :5].cpu().numpy()
             det_classes = detections[:, -1].long().cpu().numpy()
-            pred = np.zeros((det_boxes.shape[0],6))
+            pred        = np.zeros((det_boxes.shape[0],6))
             pred[:, :5] = det_boxes
-            pred[:,-1] = det_classes
-            showImg(img, pred, cls=classes)
-            # im2show = draw_detection_boxes(img, det_boxes, det_classes, class_names=classes)
-        # else:
-        #     im2show = img
-        # plt.figure()
-        # plt.imshow(im2show)
-        # plt.show()
+            pred[:,-1]  = det_classes # pred is [x, y, w, h, conf, cls]
+            
+            preds = []
+            
+            for i in range(pred.shape[0]):
+                _pred      = pred[i]
+                label_line = str(int(_pred[-1])) + ' {} {} {} {} {} \n'.format(round(_pred[0], 7),
+                                                        round(_pred[1], 8),
+                                                        round(_pred[2], 8),
+                                                        round(_pred[3], 8),
+                                                        round(_pred[4], 8)) # line formate is (category, x, y, width, height)
+                preds.append(label_line)
+            # write the predictions of current image to the write ;ocation
+            f = open(pred_path, 'w')
+            f.writelines(preds)            
+            print()
 
 if __name__ == '__main__':
     demo()
