@@ -1,9 +1,9 @@
 .vscode/
-data*
+# data/
+*.yaml
 wandb/
 *.onnx
 *.weights
-*.pth
 config/config.py
 Object_Detection_Metrics
 results/
