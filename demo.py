@@ -143,6 +143,7 @@ def demo():
             pred[:, :5] = det_boxes
             pred[:,-1]  = det_classes # pred is [x, y, w, h, conf, cls]
             
+            # 
             preds = []
             
             for i in range(pred.shape[0]):
@@ -153,7 +154,7 @@ def demo():
                                                         round(_pred[3], 8),
                                                         round(_pred[4], 8)) # line formate is (category, x, y, width, height)
                 preds.append(label_line)
-            # write the predictions of current image to the write ;ocation
+            # write the predictions of current image to the write location
             f = open(pred_path, 'w')
             f.writelines(preds)            
             print()

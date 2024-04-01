@@ -11,7 +11,7 @@ from __future__ import absolute_import
 import os
 import pickle
 import numpy as np
-import scipy.sparse
+# import scipy.sparse
 import uuid
 import xml.etree.ElementTree as ET
 from .voc_eval import voc_eval
