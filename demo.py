@@ -4,7 +4,7 @@ import argparse
 import time
 import torch
 from torch.autograd import Variable
-from PIL import Image
+# from PIL import Image
 # from test import prepare_im_data
 # from yolov2 import Yolov2
 from config import config as cfg
@@ -29,16 +29,20 @@ def prepare_im_data(img):
     im_info -- dictionary {height, width}
 
     """
-
+    
     im_info = dict()
-    im_info['width'], im_info['height'] = img.size
+    # im_info['width'], im_info['height'] = img.size
+    im_info['height'], im_info['width'] , _ = img.shape
 
     # resize the image
     H, W = cfg.input_size
-    im_data = img.resize((H, W))
+    # im_data = im_data.resize((H, W))
+    img = cv2.resize(img, (W,H))
+    im_data = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
     # to torch tensor
-    im_data = torch.from_numpy(np.array(im_data)).float() / 255
+    # im_data = torch.from_numpy(np.array(im_data)).float() / 255
+    im_data = torch.from_numpy(im_data).float() / 255
 
     im_data = im_data.permute(2, 0, 1).unsqueeze(0)
 
@@ -146,10 +150,12 @@ def demo():
     for image_name in images_names:
         if args.data==None:
             image_path = os.path.join(images_dir, image_name)
-            img        = Image.open(image_path)
+            # img        = Image.open(image_path)
+            img = cv2.imread(image_path, 3)
         else:
             image_path = image_name.split('\n')[0]
-            img        = Image.open(image_path)   
+            # img        = Image.open(image_path)
+            img = cv2.imread(image_path, 3)   
         
         im_data, im_info = prepare_im_data(img)
 
