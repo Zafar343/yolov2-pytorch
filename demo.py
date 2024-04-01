@@ -5,8 +5,9 @@ import time
 import torch
 from torch.autograd import Variable
 from PIL import Image
-from test import prepare_im_data
+# from test import prepare_im_data
 # from yolov2 import Yolov2
+from config import config as cfg
 from yolov2_tiny_2 import Yolov2
 from yolo_eval import yolo_eval
 # from util.visualize import draw_detection_boxes
@@ -15,6 +16,33 @@ from util.network import WeightLoader
 import cv2
 import numpy as np
 
+
+def prepare_im_data(img):
+    """
+    Prepare image data that will be feed to network.
+
+    Arguments:
+    img -- PIL.Image object
+
+    Returns:
+    im_data -- tensor of shape (3, H, W).
+    im_info -- dictionary {height, width}
+
+    """
+
+    im_info = dict()
+    im_info['width'], im_info['height'] = img.size
+
+    # resize the image
+    H, W = cfg.input_size
+    im_data = img.resize((H, W))
+
+    # to torch tensor
+    im_data = torch.from_numpy(np.array(im_data)).float() / 255
+
+    im_data = im_data.permute(2, 0, 1).unsqueeze(0)
+
+    return im_data, im_info
 
 def parse_args():
 
@@ -38,15 +66,24 @@ def parse_args():
     parser.add_argument('--nms_thres', type=float,
                         default=0.45,
                         help='choose an nms threshold for post processing predictions, must be in range 0-1s')
+    parser.add_argument('--pseudo_type', type=str,
+                        default='low_conf',
+                        help='Type of pseudo-label generation can be either high_conf, low_conf or None')
     args = parser.parse_args()
     return args
 
 def demo():
     args = parse_args()
     print('call with args: {}'.format(args))
-
+    
+    if args.pseudo_type=='low_conf':
+        thres = 0.1
+    elif args.pseudo_type == 'high_conf':
+        thres = 0.45
+    elif args.pseudo_type is None:
+        print('regular inference...')        
+    
     if args.data==None:
-
         # input images
         images_dir   = 'images'
         images_names = ['image1.jpg', 'image2.jpg']
@@ -143,21 +180,23 @@ def demo():
             pred[:, :5] = det_boxes
             pred[:,-1]  = det_classes # pred is [x, y, w, h, conf, cls]
             
-            # 
-            preds = []
-            
-            for i in range(pred.shape[0]):
-                _pred      = pred[i]
-                label_line = str(int(_pred[-1])) + ' {} {} {} {} {} \n'.format(round(_pred[0], 7),
-                                                        round(_pred[1], 8),
-                                                        round(_pred[2], 8),
-                                                        round(_pred[3], 8),
-                                                        round(_pred[4], 8)) # line formate is (category, x, y, width, height)
-                preds.append(label_line)
-            # write the predictions of current image to the write location
-            f = open(pred_path, 'w')
-            f.writelines(preds)            
-            print()
+            # save predictions if generation pseudo-labels
+            preds = [] 
+            if args.pseudo_type is not None:
+                for i in range(pred.shape[0]):
+                    _pred = pred[i]
+                    if (_pred[4] >= thres):
+                        label_line = str(int(_pred[-1])) + ' {} {} {} {} {} \n'.format(round(_pred[0], 7),
+                                                                round(_pred[1], 8),
+                                                                round(_pred[2], 8),
+                                                                round(_pred[3], 8),
+                                                                round(_pred[4], 8)) # line formate is (category, x, y, width, height)
+                        preds.append(label_line)
+                # write the predictions of current image to the write location
+                f = open(pred_path, 'w')
+                f.writelines(preds)            
+            print(f'prediction result for {image_path} is saved...')
+    print('done...')    
 
 if __name__ == '__main__':
     demo()
